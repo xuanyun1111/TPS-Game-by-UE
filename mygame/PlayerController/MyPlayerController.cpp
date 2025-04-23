@@ -11,6 +11,11 @@
 #include "mygame/PlayerState/MyPlayerState.h"
 #include "mygame/HUD/notice.h"
 #include "Kismet/GameplayStatics.h"
+#include "mygame/gameComponents/CombatComponent.h"
+#include "mygame/Weapon/Weapon.h"
+#include "mygame/character/MyCharacter.h"
+#include "mygame/GameState/MyGameState.h"
+#include "mygame/HUD/ReturnMenu.h"
 
 void AMyPlayerController::SetHUDScore(float Score)
 {
@@ -190,12 +195,47 @@ void AMyPlayerController::HandleCooldown()
 			MyHUD->notice->SetVisibility(ESlateVisibility::Visible);
 			FString noticeText("New Match Starts In:");
 			MyHUD->notice->notice->SetText(FText::FromString(noticeText));
-			MyHUD->notice->notwhat->SetText(FText());
+			//MyHUD->notice->notwhat->SetText(FText());
+			AMyGameState* MyGameState = Cast<AMyGameState>(UGameplayStatics::GetGameState(this));
+			AMyPlayerState* MyPlayerState = GetPlayerState<AMyPlayerState>();
+			if (MyGameState && MyPlayerState)
+			{
+				TArray<AMyPlayerState*> TopPlayers = MyGameState->TopScoringPlayers;
+				FString InfoTextString;
+				if (TopPlayers.Num() == 0)
+				{
+					InfoTextString = FString("no winner.");
+				}
+				else if (TopPlayers.Num() == 1 && TopPlayers[0] == MyPlayerState)
+				{
+					InfoTextString = FString("You are the winner!");
+				}
+				else if (TopPlayers.Num() == 1)
+				{
+					InfoTextString = FString::Printf(TEXT("Winner: \n%s"), *TopPlayers[0]->GetPlayerName());
+				}
+				else if (TopPlayers.Num() > 1)
+				{
+					InfoTextString = FString("Players tied for the win:\n");
+					for (auto TiedPlayer : TopPlayers)
+					{
+						InfoTextString.Append(FString::Printf(TEXT("%s\n"), *TiedPlayer->GetPlayerName()));
+					}
+				}
+				MyHUD->notice->notwhat_1->SetVisibility(ESlateVisibility::Collapsed);
+				MyHUD->notice->notwhat->SetText(FText::FromString(InfoTextString));
+			}
 		}
-		if (MyHUD->notice)
+		AMyCharacter* MyCharacter = Cast<AMyCharacter>(GetPawn());
+		if (MyCharacter && MyCharacter->GetCombat())
+		{
+			MyCharacter->bDisableGameplay = true;
+			MyCharacter->GetCombat()->FireButtonPressed(false);
+		}
+		/*if (MyHUD->notice)
 		{
 			MyHUD->notice->SetVisibility(ESlateVisibility::Visible);
-		}
+		}*/
 	}
 }
 
@@ -245,6 +285,14 @@ void AMyPlayerController::PollInit()
 	}
 }
 
+void AMyPlayerController::SetupInputComponent()
+{
+	Super::SetupInputComponent();
+	if (InputComponent == nullptr) return;
+
+	InputComponent->BindAction("Quit", IE_Pressed, this, &AMyPlayerController::ShowReturnToMainMenu);
+}
+
 void AMyPlayerController::ServerRequestServerTime_Implementation(float TimeOfClientRequest)
 {
 	float ServerTimeOfReceipt = GetWorld()->GetTimeSeconds();
@@ -266,6 +314,27 @@ void AMyPlayerController::CheckTimeSync(float DeltaTime)
 	}
 	
 }
+void AMyPlayerController::ShowReturnToMainMenu()
+{
+	if (ReturnMenuWidget == nullptr) return;
+	if (ReturnMenu == nullptr)
+	{
+		ReturnMenu = CreateWidget<UReturnMenu>(this, ReturnMenuWidget);
+	}
+	if (ReturnMenu)
+	{
+		bReturnToMainMenuOpen = !bReturnToMainMenuOpen;
+		if (bReturnToMainMenuOpen)
+		{
+			ReturnMenu->MenuSetup();
+		}
+		else
+		{
+			ReturnMenu->MenuTearDown();
+		}
+	}
+}
+
 void AMyPlayerController::ClientJoinMidgame_Implementation(FName StateOfMatch, float Warmup, float Match, float Cooldown, float StartingTime)
 {
 	WarmupTime = Warmup;

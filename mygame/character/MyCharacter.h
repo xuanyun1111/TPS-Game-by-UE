@@ -8,6 +8,7 @@
 #include "mygame/Interfaces/InteractWithCrosshairsInterface.h"
 #include "Components/TimelineComponent.h"
 #include "mygame/mygameTypes/CombatState.h"
+#include "mygame/gameComponents/CombatComponent.h"
 #include "MyCharacter.generated.h"
 
 
@@ -34,6 +35,8 @@ public:
 	void Death();
 	UFUNCTION(NetMulticast,Reliable)
 	void MulticastDeath();
+	UPROPERTY(Replicated)
+	bool bDisableGameplay = false;
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
@@ -58,6 +61,7 @@ protected:
 	void ReceiveDamage(AActor* DamagedActor, float Damage, const UDamageType* DamageType, class AController* InstigatorController, AActor* DamageCause);
 	void UpdateHUDHealth();
 	void PollInit();
+	void RotateInPlace(float DeltaTime);
 private:
 	UPROPERTY(VisibleAnywhere, Category = Camera)
 		class USpringArmComponent* CameraBoom;
@@ -122,6 +126,7 @@ private:
 	UCurveFloat* DissolveCurve;
 	UFUNCTION()
 	void UpdateDissolveMaterial(float DissolveValue);
+	virtual void Destroyed() override;
 	void StartDissolve();
 	UPROPERTY(VisibleAnywhere, Category = Death)
 	UMaterialInstanceDynamic* DynamicDissolveMaterialInstance_body;
@@ -147,4 +152,6 @@ public:
 	FORCEINLINE bool ShouldRotateRootBone () const { return bRotateRootBone; }
 	FORCEINLINE bool IsDeath() const { return bDeath; }
 	ECombatState GetCombatState() const;
+	FORCEINLINE UCombatComponent* GetCombat() const { return Combat; }
+	FORCEINLINE bool GetDisableGameplay() const { return bDisableGameplay; }
 };

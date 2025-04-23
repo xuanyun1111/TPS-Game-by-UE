@@ -32,6 +32,7 @@ protected:
 	virtual void BeginPlay() override;
 	void SetHUDTime();
 	void PollInit();
+	virtual void SetupInputComponent() override;
 	// Requests the current server time, passing in the client's time when the request was sent
 	UFUNCTION(Server, Reliable)
 	void ServerRequestServerTime(float TimeOfClientRequest);
@@ -52,7 +53,15 @@ protected:
 	void ServerCheckMatchState();
 	UFUNCTION(Client, Reliable)
 	void ClientJoinMidgame(FName StateOfMatch, float Warmup, float Match, float Cooldown, float StartingTime);
+	void ShowReturnToMainMenu();
 private:
+	UPROPERTY(EditAnywhere, Category = HUD)
+	TSubclassOf<class UUserWidget> ReturnMenuWidget;
+
+	UPROPERTY()
+	class UReturnMenu* ReturnMenu;
+
+	bool bReturnToMainMenuOpen = false;
 	class AMyHUD* MyHUD;
 	UPROPERTY(EditAnywhere, Category = Time)
 	float LevelStartingTime = 0.f;

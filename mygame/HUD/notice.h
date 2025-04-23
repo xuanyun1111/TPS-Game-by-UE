@@ -21,5 +21,7 @@ public:
     UTextBlock* notice;
     UPROPERTY(meta = (BindWidget))
     UTextBlock* notwhat;
+    UPROPERTY(meta = (BindWidget))
+    UTextBlock* notwhat_1;
 
 };

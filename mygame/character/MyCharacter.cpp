@@ -19,6 +19,10 @@
 #include "TimerManager.h"
 #include "mygame/PlayerState/MyPlayerState.h"
 #include "mygame/Weapon/WeaponTypes.h"
+
+
+#include "Kismet/GameplayStatics.h"
+
 // Sets default values
 AMyCharacter::AMyCharacter()
 {
@@ -59,6 +63,7 @@ void AMyCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLife
 	DOREPLIFETIME_CONDITION(AMyCharacter, OverlappingWeapon, COND_OwnerOnly);
 	//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Cyan, FString::Printf(TEXT("AMyCharacter::GetLifetimeReplicatedProps__DOREPLIFETIME_CONDITION")));
 	DOREPLIFETIME(AMyCharacter, Health);
+	DOREPLIFETIME(AMyCharacter, bDisableGameplay);
 }
 
 
@@ -77,19 +82,7 @@ void AMyCharacter::BeginPlay()
 void AMyCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
-	if (GetLocalRole() > ENetRole::ROLE_SimulatedProxy && IsLocallyControlled())
-	{
-		AimOffset(DeltaTime);
-	}
-	else
-	{
-		TimeSinceLastMovementReplication += DeltaTime;
-		if (TimeSinceLastMovementReplication > 0.25f)
-		{
-			OnRep_ReplicatedMovement();
-		}
-		CalculateAim_Pitch();
-	}
+	RotateInPlace(DeltaTime);
 	HideCameraIfCharacterClose();
 	PollInit();
 }
@@ -209,9 +202,10 @@ void AMyCharacter::MulticastDeath_Implementation()
 	StartDissolve();
 	GetCharacterMovement()->DisableMovement();
 	GetCharacterMovement()->StopMovementImmediately();
-	if (MyPlayerController)
+	bDisableGameplay = true;
+	if (Combat)
 	{
-		DisableInput(MyPlayerController);
+		Combat->FireButtonPressed(false);
 	}
 	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	GetMesh()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
@@ -268,9 +262,33 @@ void AMyCharacter::PollInit()
 	}
 }
 
+void AMyCharacter::RotateInPlace(float DeltaTime)
+{
+	if (bDisableGameplay)
+	{
+		bUseControllerRotationYaw = false;
+		TurningInPlace = ETurningInPlace::ETIP_NotTurning;
+		return;
+	}
+	if (GetLocalRole() > ENetRole::ROLE_SimulatedProxy && IsLocallyControlled())
+	{
+		AimOffset(DeltaTime);
+	}
+	else
+	{
+		TimeSinceLastMovementReplication += DeltaTime;
+		if (TimeSinceLastMovementReplication > 0.25f)
+		{
+			OnRep_ReplicatedMovement();
+		}
+		CalculateAim_Pitch();
+	}
+}
+
 
 void AMyCharacter::MoveForward(float Value)
 {
+	if (bDisableGameplay) return;
 	if (Controller != nullptr && Value != 0.f) {
 		const FRotator YawRotation(0.f, Controller->GetControlRotation().Yaw, 0.f);
 		const FVector Direction(FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X));
@@ -280,6 +298,7 @@ void AMyCharacter::MoveForward(float Value)
 
 void AMyCharacter::MoveRight(float Value)
 {
+	if (bDisableGameplay) return;
 	if (Controller != nullptr && Value != 0.f) {
 		const FRotator YawRotation(0.f, Controller->GetControlRotation().Yaw, 0.f);
 		const FVector Direction(FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y));
@@ -289,15 +308,18 @@ void AMyCharacter::MoveRight(float Value)
 
 void AMyCharacter::Turn(float Value)
 {
+	if (bDisableGameplay) return;
 	AddControllerYawInput(Value);
 }
 
 void AMyCharacter::LookUp(float Value)
 {
+	if (bDisableGameplay) return;
 	AddControllerPitchInput(Value);
 }
 void AMyCharacter::EquipButtonPressed()
 {
+	if (bDisableGameplay) return;
 	//GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Cyan, FString::Printf(TEXT("use function:EquipButtonPressed")));
 	if (Combat)
 	{
@@ -323,6 +345,7 @@ void AMyCharacter::ServerEquipButtonPressed_Implementation()
 }
 void AMyCharacter::CrouchButtonPressed()
 {
+	if (bDisableGameplay) return;
 	if (bIsCrouched)
 	{
 		UnCrouch();
@@ -334,6 +357,7 @@ void AMyCharacter::CrouchButtonPressed()
 }
 void AMyCharacter::ReloadButtonPressed()
 {
+	if (bDisableGameplay) return;
 	if (Combat)
 	{
 		Combat->Reload();
@@ -341,6 +365,7 @@ void AMyCharacter::ReloadButtonPressed()
 }
 void AMyCharacter::AimButtonPressed()
 {
+	if (bDisableGameplay) return;
 	if (Combat)
 	{
 		Combat->SetAiming(true);
@@ -349,6 +374,7 @@ void AMyCharacter::AimButtonPressed()
 }
 void AMyCharacter::AimButtonReleased()
 {
+	if (bDisableGameplay) return;
 	if (Combat)
 	{
 		Combat->SetAiming(false);
@@ -432,6 +458,7 @@ void AMyCharacter::SimProxiesTurn()
 }
 void AMyCharacter::Jump()
 {
+	if (bDisableGameplay) return;
 	if (bIsCrouched)
 	{
 		UnCrouch();
@@ -443,6 +470,7 @@ void AMyCharacter::Jump()
 }
 void AMyCharacter::FireButtonPressed()
 {
+	if (bDisableGameplay) return;
 	if (Combat)
 	{
 		Combat->FireButtonPressed(true);
@@ -529,6 +557,16 @@ void AMyCharacter::UpdateDissolveMaterial(float DissolveValue)
 	if (DynamicDissolveMaterialInstance_logo)
 	{
 		DynamicDissolveMaterialInstance_logo->SetScalarParameterValue(TEXT("Dissolve"), DissolveValue);
+	}
+}
+void AMyCharacter::Destroyed()
+{
+	Super::Destroyed();
+	AMyGameMode* MyGameMode = Cast<AMyGameMode>(UGameplayStatics::GetGameMode(this));
+	bool bMatchNotInProgress = MyGameMode && MyGameMode->GetMatchState() != MatchState::InProgress;
+	if (Combat && Combat->EquippedWeapon && bMatchNotInProgress)
+	{
+		Combat->EquippedWeapon->Destroy();
 	}
 }
 void AMyCharacter::StartDissolve()
